@@ -1,0 +1,103 @@
+name: Build ImmortalWrt 23.05.4 with Full QoS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
+          zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3 python3-requests \
+          rsync curl file
+
+    - name: Clone ImmortalWrt source
+      run: |
+        git clone https://github.com/immortalwrt/immortalwrt.git
+        cd immortalwrt
+        # 使用与您当前系统相同的版本
+        git checkout 399f9a1db3
+        
+    - name: Configure for AX4200Q with complete QoS
+      run: |
+        cd immortalwrt
+        
+        # 更新 feeds
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        
+        # 创建完整配置
+        cat > .config << 'EOF'
+CONFIG_TARGET_mediatek=y
+CONFIG_TARGET_mediatek_filogic=y
+CONFIG_TARGET_mediatek_filogic_DEVICE_asus_tuf-ax4200=y
+
+# 基础系统
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-compat=y
+CONFIG_PACKAGE_luci-theme-argon=y
+
+# 完整 QoS 支持 - 核心组件
+CONFIG_PACKAGE_luci-app-qos=y
+CONFIG_PACKAGE_qos-scripts=y
+
+# 完整 QoS 支持 - 内核模块
+CONFIG_PACKAGE_kmod-sched-cake=y
+CONFIG_PACKAGE_kmod-sched-htb=y
+CONFIG_PACKAGE_kmod-sched-core=y
+CONFIG_PACKAGE_kmod-ifb=y
+CONFIG_PACKAGE_iptables-mod-filter=y
+CONFIG_PACKAGE_iptables-mod-ipopt=y
+CONFIG_PACKAGE_iptables-mod-conntrack-extra=y
+
+# 流量控制工具
+CONFIG_PACKAGE_tc-full=y
+CONFIG_PACKAGE_tc-mod-iptables=y
+
+# 网络驱动
+CONFIG_PACKAGE_kmod-mt7915e=y
+CONFIG_PACKAGE_kmod-mt7916-firmware=y
+CONFIG_PACKAGE_kmod-usb-core=y
+CONFIG_PACKAGE_kmod-usb2=y
+CONFIG_PACKAGE_kmod-usb3=y
+
+# 网络工具
+CONFIG_PACKAGE_ip-full=y
+CONFIG_PACKAGE_iperf3=y
+CONFIG_PACKAGE_tcpdump=y
+
+# 中文支持
+CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-qos-zh-cn=y
+
+# 其他实用功能
+CONFIG_PACKAGE_luci-app-upnp=y
+CONFIG_PACKAGE_luci-app-wol=y
+
+# 系统工具
+CONFIG_PACKAGE_htop=y
+CONFIG_PACKAGE_curl=y
+CONFIG_PACKAGE_wget=y
+EOF
+
+        # 应用配置
+        make defconfig
+        
+    - name: Build firmware
+      run: |
+        cd immortalwrt
+        echo "开始编译完整 QoS 固件..."
+        make -j$(nproc) V=s
+        
+    - name: Upload firmware
+      uses: actions/upload-artifact@v4
+      with:
+        name: immortalwrt-ax4200q-full-qos
+        path: immortalwrt/bin/targets/mediatek/filogic/*.bin
+        retention-days: 30
