@@ -1,0 +1,48 @@
+name: Build ImmortalWrt
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 unzip zlib1g-dev lib32gcc1 libc6-dev-i386 subversion flex uglify-js git-core gcc-multilib g++-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler g++-multilib antlr3 gperf
+
+      - name: Clone ImmortalWrt
+        run: |
+          git clone -b openwrt-23.05 https://github.com/immortalwrt/immortalwrt.git
+          cd immortalwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configure build
+        run: |
+          cd immortalwrt
+          echo "CONFIG_TARGET_mediatek=y" >> .config
+          echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
+          echo "CONFIG_TARGET_mediatek_filogic_DEVICE_asus_tuf-ax4200q=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-qos=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config
+          make defconfig
+
+      - name: Build firmware
+        run: |
+          cd immortalwrt
+          make -j$(nproc) V=s
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v2
+        with:
+          name: ImmortalWrt Firmware
+          path: immortalwrt/bin/targets/mediatek/filogic/
